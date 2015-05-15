@@ -99,3 +99,36 @@ if __name__ == '__main__':
         plt.plot(train_sizes, valid_scores_vec[:, i], 'r')
     plt.show() 
     
+    
+    # Optimize pipeline
+    
+    tfidf_vect = TfidfVectorizer()
+    log_reg = LogisticRegression(C = 10)
+    
+    estimators = [('vect', tfidf_vect), ('clf', log_reg)]
+    clf = Pipeline(estimators)
+    
+    clf.set_params(vect__analyzer = 'char')
+    n_gram_range = np.array(range(1, 6))
+    scores_n_grams = np.zeros(n_gram_range.shape)
+    for n_gram_ind in range(len(n_gram_range)):
+        print(n_gram_ind)
+        clf.set_params(vect__ngram_range=(1, n_gram_range[n_gram_ind]))
+        #cv = cross_validation.ShuffleSplit(X_train.shape[0], n_iter = 20, test_size = 0.2)
+        cv = cross_validation.KFold(X_train.shape[0], n_folds = 6)
+        scores = []
+        for train_index, test_index in cv:
+            clf.fit(X_train[train_index, :], np.ravel(y_train[train_index]))
+            y_test_pred = clf.predict(X_train[test_index, :])
+            scores.append(roc_auc_score(y_test_pred, np.ravel(y_train[test_index])))
+        
+        scores_n_grams[n_gram_ind] = np.mean(scores)
+    
+    
+    print(scores_n_grams)
+    
+    
+    plt.figure()
+    plt.plot(n_gram_range, scores_n_grams)
+    plt.show()
+    
