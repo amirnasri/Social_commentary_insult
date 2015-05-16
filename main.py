@@ -40,7 +40,22 @@ def scorer(estimator, X, y):
         return 0
     return roc_auc_score(y_pred, y)
 
-
+def roc_auc_score_(y_pred, y_true):
+    if (len(np.unique(y_true)) <= 1 or
+         len(np.unique(y_pred)) <= 1):
+        return 0
+    else:
+        return roc_auc_score(y_true, y_pred) 
+        
+def base_model():
+    tfidf_vect = TfidfVectorizer()
+    log_reg = LogisticRegression()
+    
+    estimators = [('vect', tfidf_vect), ('clf', log_reg)]
+    pl = Pipeline(estimators)
+    
+    return pl
+    
 if __name__ == '__main__':
     X_train, y_train = load_data('train.csv', 1000)
     tfv = TfidfVectorizer(analyzer = 'word')
@@ -102,33 +117,55 @@ if __name__ == '__main__':
     
     # Optimize pipeline
     
-    tfidf_vect = TfidfVectorizer()
-    log_reg = LogisticRegression(C = 10)
+    log_reg_clf = LogisticRegression(C = 10)
+    svm_clf = svm.SVC(C = 10)
     
-    estimators = [('vect', tfidf_vect), ('clf', log_reg)]
+    classifiers = [log_reg_clf, svm_clf]
+
+    tfidf_vect = TfidfVectorizer()
+    
+    estimators = [('vect', tfidf_vect), ('clf', svm_clf)]
     clf = Pipeline(estimators)
     
     clf.set_params(vect__analyzer = 'char')
-    n_gram_range = np.array(range(1, 6))
-    scores_n_grams = np.zeros(n_gram_range.shape)
+    n_gram_range = np.array(range(1, 3))
+    scores_train_vec = np.zeros(n_gram_range.shape)
+    scores_test_vec = np.zeros(n_gram_range.shape)
     for n_gram_ind in range(len(n_gram_range)):
-        print(n_gram_ind)
+        print("%d n_gram:" % n_gram_range[n_gram_ind])
         clf.set_params(vect__ngram_range=(1, n_gram_range[n_gram_ind]))
         #cv = cross_validation.ShuffleSplit(X_train.shape[0], n_iter = 20, test_size = 0.2)
         cv = cross_validation.KFold(X_train.shape[0], n_folds = 6)
-        scores = []
+        scores_train = []
+        scores_test = []
         for train_index, test_index in cv:
-            clf.fit(X_train[train_index, :], np.ravel(y_train[train_index]))
-            y_test_pred = clf.predict(X_train[test_index, :])
-            scores.append(roc_auc_score(y_test_pred, np.ravel(y_train[test_index])))
+            clf.fit(X_train[train_index], np.ravel(y_train[train_index]))
+
+            y_train_pred = clf.predict(X_train[train_index])
+            train_score = roc_auc_score_(y_train_pred, np.ravel(y_train[train_index]))
+            print train_score
+            scores_train.append(train_score)
+
+            y_test_pred = clf.predict(X_train[test_index])
+            test_score = roc_auc_score_(y_test_pred, np.ravel(y_train[test_index]))
+            print test_score
+            scores_test.append(test_score)
+
+        scores_train_vec[n_gram_ind] = np.mean(scores_train)
+        scores_test_vec[n_gram_ind] = np.mean(scores_test)
+            
         
-        scores_n_grams[n_gram_ind] = np.mean(scores)
     
     
-    print(scores_n_grams)
+    print(scores_train_vec)
+    print(scores_test_vec)
     
     
     plt.figure()
-    plt.plot(n_gram_range, scores_n_grams)
+    plt.plot(n_gram_range, scores_train_vec)
+    plt.hold(True)
+    plt.plot(n_gram_range, scores_test_vec)
+    plt.grid(True)
     plt.show()
+    #clf.fit(X_train, np.ravel(y_train))
     
