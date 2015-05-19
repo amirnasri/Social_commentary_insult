@@ -15,6 +15,8 @@ from sklearn.feature_selection import SelectPercentile, chi2
 from sklearn.pipeline import Pipeline
 from sklearn import tree
 from sys import exit
+from sklearn.base import BaseEstimator
+from sklearn.pipeline import FeatureUnion
 
 def load_data(filename, sample_num = None):
     f = open(filename, 'r')
@@ -165,39 +167,80 @@ def log_reg_model():
     clf_lr = LogisticRegression()
     #clf = LogisticRegression(tol=1e-8, penalty='l2', C=100)
     vect = TfidfVectorizer()
-    
-    clf = Pipeline([('vectorizer', vect), ('clf_lr', clf_lr)])
-    
+    fe = FeatureExtractor('badword_list.txt')
+    features = FeatureUnion([('fe', fe), ('vect', vect)])
+
+    clf = Pipeline([('features', features), ('clf_lr', clf_lr)])
+
     param_grid = dict()
     param_grid['clf_lr__C'] = np.logspace(-1, 1, 5)
-    param_grid['vectorizer__analyzer'] = ['char', 'word']
-    param_grid['vectorizer__use_idf'] = [True, False]
-    param_grid['vectorizer__ngram_range'] = [(1, k) for k in range(1, 5)]
+    param_grid['features__vect__analyzer'] = ['char', 'word']
+    param_grid['features__vect__use_idf'] = [True, False]
+    param_grid['features__vect__ngram_range'] = [(1, k) for k in range(1, 5)]
     gs = grid_search.GridSearchCV(clf, param_grid = param_grid, scoring = roc_auc_scorer, verbose = True, n_jobs = -1)
     
     gs.fit(X_train, np.ravel(y_train))
     
     clf_best = gs.best_estimator_
     print gs.best_params_
-    print gs.best_score_
+    print "Best grid-search score: %f" % gs.best_score_
     
-    print roc_auc_scorer(clf_best, X_train, np.ravel(y_train))    
-    print roc_auc_scorer(clf_best, X_test, np.ravel(y_test))    
-   
-    return Pipeline([('vectorizer', vect), ('select', select), ('clf_lr', clf_lr)])
+    print "Performance on training set (no feature selection): %f" % roc_auc_scorer(clf_best, X_train, np.ravel(y_train))    
+    print "Performance on test set (no feature selection): %f" % roc_auc_scorer(clf_best, X_test, np.ravel(y_test))    
+    select = SelectPercentile(score_func = chi2, percentile = 18)
+    return Pipeline([('features', fe), ('select', select), ('clf_lr', clf_lr)])
+
+class FeatureExtractor(BaseEstimator):
+
+    badwords = None
+    def __init__(self, badword_filename):
+        #super(self, TransformerMixin).__init__()
+        if (FeatureExtractor.badwords is not None):
+            return
+
+        FeatureExtractor.badwords = set()
+        f = open(badword_filename, 'r')
+        for word in f:
+            FeatureExtractor.badwords.add(word.strip())
+
+    def fit(self, X, y = None):
+        return self
+
+    def transform(self, comments):
+
+        sent_list = [c.split() for c in comments]
+        #number of bad words
+        badword_num = [sum([word in FeatureExtractor.badwords for word in sent])
+                        for sent in sent_list]
+
+        word_num = [len(sent) for sent in sent_list]
+
+        badword_ratio = np.array(badword_num, dtype = float)/np.array(word_num)
+
+        char_num = [len(c) for c in comments]
+
+        upper_word_num = [sum([word.isupper() for word in sent])
+                           for sent in sent_list]
+        exclam_num = [sum([w.count('!') for w in sent])
+                       for sent in sent_list]
+
+        return np.array([word_num, char_num, badword_num, badword_ratio, upper_word_num, exclam_num]).T
 
 
 if __name__ == '__main__':
 
     X_train, y_train = load_data('train.csv')
-    X_test, y_test = load_data('test_with_solutions.csv')
+    X_test, y_test = load_data('test_with_solutions.csv', 50)
     
+    #fe = FeatureExtractor('badword_list.txt')
+    #print fe.transform(X_train).shape
     
     #tfv = TfidfVectorizer(analyzer = 'char')
     #X_train_vect = tfv.fit_transform(X_train)
     
-    #model = log_reg_model()
-    #plot_learning_curves(model)
+    model = log_reg_model()
+    print("performance on test set (with feature selection): %f" % roc_auc_scorer(model, X_test, np.ravel(y_test)))
+    plot_learning_curves(model)
     
-    model = decision_tree_model()
+    #model = decision_tree_model()
     
