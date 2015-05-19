@@ -11,15 +11,19 @@ from sklearn import cross_validation
 from sklearn import grid_search
 from sklearn import learning_curve
 import matplotlib.pylab as plt
+from sklearn.feature_selection import SelectPercentile, chi2
+from sklearn.pipeline import Pipeline
+from sklearn import tree
+from sys import exit
 
-def load_data(filename, sample_num):
+def load_data(filename, sample_num = None):
     f = open(filename, 'r')
     X = []
     y = []
     count = 0
     f.readline()
     for line in f.readlines():
-        if (count == sample_num):
+        if (sample_num and count == sample_num):
             break;
         count = count + 1
         
@@ -34,7 +38,7 @@ def load_data(filename, sample_num):
 
 
 
-def scorer(estimator, X, y):
+def roc_auc_scorer(estimator, X, y):
     y_pred = estimator.predict(X)
     if (len(np.unique(y_pred)) == 1):
         return 0
@@ -46,89 +50,21 @@ def roc_auc_score_(y_pred, y_true):
         return 0
     else:
         return roc_auc_score(y_true, y_pred) 
-        
-def base_model():
-    tfidf_vect = TfidfVectorizer()
-    log_reg = LogisticRegression()
-    
-    estimators = [('vect', tfidf_vect), ('clf', log_reg)]
-    pl = Pipeline(estimators)
-    
-    return pl
-    
-if __name__ == '__main__':
-    X_train, y_train = load_data('train.csv', 1000)
-    tfv = TfidfVectorizer(analyzer = 'word')
-    X_train_vect = tfv.fit_transform(X_train).todense()
-    
-    clf = LogisticRegression(C=100)
-    m = X_train_vect.shape[0]
-    
-    cv = cross_validation.KFold(m, n_folds = 6)
-    
-    '''
-    scores = []
-    for train_index, test_index in cv:
-        clf.fit(X_train_vect[train_index, :], y_train[train_index])
-        y_train_pred = clf.predict(X_train_vect[test_index, :])
-        scores.append(roc_auc_score(y_train[test_index], y_train_pred))
-    '''
-    
-    param_grid = dict()
-    C_vec = np.logspace(-1, 1, 10)
-    param_grid['C'] = C_vec
-    gs = grid_search.GridSearchCV(estimator = clf, param_grid = param_grid, cv = cv)
-    
-    gs.fit(X_train_vect, np.ravel(y_train))
-    print(dir(gs))
-    
-    
-    clf_best = gs.best_estimator_
-    print(clf_best.C)
-    
-    X_test, y_test = load_data('test_with_solutions.csv', 200)
-    X_test_vect = tfv.transform(X_test).todense()
-    y_test_pred = clf_best.predict(X_test_vect)
 
-    print(roc_auc_score(y_test, y_test_pred))
-    
-    print(dir(clf))
-    
-    
-    
-    valid_scores_vec = np.zeros((5, len(C_vec)))
-    train_scores_vec = np.zeros((5, len(C_vec)))
-    for i in range(len(C_vec)):
-        clf.set_params(C = C_vec[i])
-        train_sizes, train_scores, valid_scores = learning_curve.learning_curve(clf, X_train_vect, np.ravel(y_train), scoring=scorer, cv=4)
-        train_scores_vec[:, i] = np.mean(train_scores, 1) 
-        valid_scores_vec[:, i] = np.mean(valid_scores, 1)
-    
-    print(train_scores_vec)
-    print(valid_scores_vec)
-    
-    for i in range(len(C_vec)):
-        plt.figure()
-        plt.hold(True)
-        plt.plot(train_sizes, train_scores_vec[:, i], 'b')
-        plt.plot(train_sizes, valid_scores_vec[:, i], 'r')
-    plt.show() 
-    
-    
-    # Optimize pipeline
+def optimize_char_ngram():
     
     log_reg_clf = LogisticRegression(C = 10)
-    svm_clf = svm.SVC(C = 10)
+    #svm_clf = svm.SVC(C = 10)
     
-    classifiers = [log_reg_clf, svm_clf]
+    #classifiers = [log_reg_clf, svm_clf]
 
     tfidf_vect = TfidfVectorizer()
     
-    estimators = [('vect', tfidf_vect), ('clf', svm_clf)]
+    estimators = [('vect', tfidf_vect), ('clf', log_reg_clf)]
     clf = Pipeline(estimators)
     
     clf.set_params(vect__analyzer = 'char')
-    n_gram_range = np.array(range(1, 3))
+    n_gram_range = np.array(range(1, 5))
     scores_train_vec = np.zeros(n_gram_range.shape)
     scores_test_vec = np.zeros(n_gram_range.shape)
     for n_gram_ind in range(len(n_gram_range)):
@@ -168,4 +104,100 @@ if __name__ == '__main__':
     plt.grid(True)
     plt.show()
     #clf.fit(X_train, np.ravel(y_train))
+
+def eval_model():
+    cv = cross_validation.KFold(m, n_folds = 6)
+    
+    scores = []
+    for train_index, test_index in cv:
+        clf.fit(X_train_vect[train_index, :], y_train[train_index])
+        y_train_pred = clf.predict(X_train_vect[test_index, :])
+        scores.append(roc_auc_score(y_train[test_index], y_train_pred))
+
+
+def plot_learning_curves(clf, X, y):
+  
+    train_sizes, train_scores, valid_scores = learning_curve.learning_curve(clf, X, np.ravel(y), scoring = roc_auc_scorer, 
+                                 cv = 6, train_sizes = np.linspace(.5, 1, 10), n_jobs = -1)
+    
+    print train_scores.shape
+    print valid_scores.shape
+    plt.figure()
+    plt.plot(train_sizes, np.mean(train_scores, axis = 1))
+    plt.hold(True)
+    plt.plot(train_sizes, np.mean(valid_scores, axis = 1))
+    plt.grid(True)
+    plt.show()
+
+def base_model():
+    tfidf_vect = TfidfVectorizer()
+    log_reg = LogisticRegression(C = 10)
+    
+    estimators = [('vect', tfidf_vect), ('clf', log_reg)]
+    pl = Pipeline(estimators)
+    
+    return pl
+
+def decision_tree_model():
+    dtree_clf = tree.DecisionTreeClassifier()
+    vect = TfidfVectorizer()
+    
+    clf = Pipeline([('vectorizer', vect), ('clf_lr', dtree_clf)])
+    
+    param_grid = dict()
+    param_grid['vectorizer__analyzer'] = ['char', 'word']
+    param_grid['vectorizer__use_idf'] = [True, False]
+    param_grid['vectorizer__ngram_range'] = [(1, k) for k in range(1, 5)]
+    gs = grid_search.GridSearchCV(clf, param_grid = param_grid, scoring = roc_auc_scorer, verbose = True, n_jobs = -1)
+    
+    gs.fit(X_train, np.ravel(y_train))
+    
+    clf_best = gs.best_estimator_
+    print gs.best_params_
+    print gs.best_score_
+    
+    print roc_auc_scorer(clf_best, X_train, np.ravel(y_train))    
+    print roc_auc_scorer(clf_best, X_test, np.ravel(y_test))  
+    return gs  
+    
+
+def log_reg_model():
+    clf_lr = LogisticRegression()
+    #clf = LogisticRegression(tol=1e-8, penalty='l2', C=100)
+    vect = TfidfVectorizer()
+    
+    clf = Pipeline([('vectorizer', vect), ('clf_lr', clf_lr)])
+    
+    param_grid = dict()
+    param_grid['clf_lr__C'] = np.logspace(-1, 1, 5)
+    param_grid['vectorizer__analyzer'] = ['char', 'word']
+    param_grid['vectorizer__use_idf'] = [True, False]
+    param_grid['vectorizer__ngram_range'] = [(1, k) for k in range(1, 5)]
+    gs = grid_search.GridSearchCV(clf, param_grid = param_grid, scoring = roc_auc_scorer, verbose = True, n_jobs = -1)
+    
+    gs.fit(X_train, np.ravel(y_train))
+    
+    clf_best = gs.best_estimator_
+    print gs.best_params_
+    print gs.best_score_
+    
+    print roc_auc_scorer(clf_best, X_train, np.ravel(y_train))    
+    print roc_auc_scorer(clf_best, X_test, np.ravel(y_test))    
+   
+    return Pipeline([('vectorizer', vect), ('select', select), ('clf_lr', clf_lr)])
+
+
+if __name__ == '__main__':
+
+    X_train, y_train = load_data('train.csv')
+    X_test, y_test = load_data('test_with_solutions.csv')
+    
+    
+    #tfv = TfidfVectorizer(analyzer = 'char')
+    #X_train_vect = tfv.fit_transform(X_train)
+    
+    #model = log_reg_model()
+    #plot_learning_curves(model)
+    
+    model = decision_tree_model()
     
