@@ -120,10 +120,8 @@ def eval_model():
 def plot_learning_curves(clf, X, y):
   
     train_sizes, train_scores, valid_scores = learning_curve.learning_curve(clf, X, np.ravel(y), scoring = roc_auc_scorer, 
-                                 cv = 6, train_sizes = np.linspace(.5, 1, 10), n_jobs = -1)
+                                 cv = 20, train_sizes = np.linspace(.5, 1, 10), n_jobs = -1)
     
-    print train_scores.shape
-    print valid_scores.shape
     plt.figure()
     plt.plot(train_sizes, np.mean(train_scores, axis = 1))
     plt.hold(True)
@@ -169,8 +167,9 @@ def log_reg_model():
     vect = TfidfVectorizer()
     fe = FeatureExtractor('badword_list.txt')
     features = FeatureUnion([('fe', fe), ('vect', vect)])
+    select = SelectPercentile(score_func = chi2, percentile = 18)
 
-    clf = Pipeline([('features', features), ('clf_lr', clf_lr)])
+    clf = Pipeline([('features', features), ('select', select), ('clf_lr', clf_lr)])
 
     param_grid = dict()
     param_grid['clf_lr__C'] = np.logspace(-1, 1, 5)
@@ -185,10 +184,10 @@ def log_reg_model():
     print gs.best_params_
     print "Best grid-search score: %f" % gs.best_score_
     
-    print "Performance on training set (no feature selection): %f" % roc_auc_scorer(clf_best, X_train, np.ravel(y_train))    
-    print "Performance on test set (no feature selection): %f" % roc_auc_scorer(clf_best, X_test, np.ravel(y_test))    
-    select = SelectPercentile(score_func = chi2, percentile = 18)
-    return Pipeline([('features', fe), ('select', select), ('clf_lr', clf_lr)])
+    print "Performance on training set: %f" % roc_auc_scorer(clf_best, X_train, np.ravel(y_train))    
+    print "Performance on test set: %f" % roc_auc_scorer(clf_best, X_test, np.ravel(y_test))    
+    #return Pipeline([('features', fe), ('clf_lr', clf_lr)])
+    return clf_best
 
 class FeatureExtractor(BaseEstimator):
 
@@ -229,7 +228,7 @@ class FeatureExtractor(BaseEstimator):
 
 if __name__ == '__main__':
 
-    X_train, y_train = load_data('train.csv')
+    X_train, y_train = load_data('train.csv', 100)
     X_test, y_test = load_data('test_with_solutions.csv', 50)
     
     #fe = FeatureExtractor('badword_list.txt')
@@ -239,8 +238,7 @@ if __name__ == '__main__':
     #X_train_vect = tfv.fit_transform(X_train)
     
     model = log_reg_model()
-    print("performance on test set (with feature selection): %f" % roc_auc_scorer(model, X_test, np.ravel(y_test)))
-    plot_learning_curves(model)
+    plot_learning_curves(model, X_test, np.ravel(y_test))
     
     #model = decision_tree_model()
     
