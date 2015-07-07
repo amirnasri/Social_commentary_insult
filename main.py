@@ -30,8 +30,12 @@ def load_data(filename, sample_num = None):
         count = count + 1
         
         line_fields = line.split(',')
+        comment = ",".join(line_fields[2:]).strip('\r\n" ')
+        comment = comment.replace('\\xa0', ' ').replace('.', ' ').replace('\\n', ' ').replace('\\\\n', ' ')
+        #print "|%s|" % comment
+        #print [ch for ch in comment]
         try: 
-            X.append(",".join(line_fields[2:]))
+            X.append(comment)
             y.append(int(line_fields[0]))
         except:
             print "index error"
@@ -120,7 +124,7 @@ def eval_model():
 def plot_learning_curves(clf, X, y):
   
     train_sizes, train_scores, valid_scores = learning_curve.learning_curve(clf, X, np.ravel(y), scoring = roc_auc_scorer, 
-                                 cv = 20, train_sizes = np.linspace(.5, 1, 10), n_jobs = -1)
+                                 cv = 6, train_sizes = np.linspace(.5, 1, 10), n_jobs = -1)
     
     plt.figure()
     plt.plot(train_sizes, np.mean(train_scores, axis = 1))
@@ -176,9 +180,10 @@ def log_reg_model():
     param_grid['features__vect__analyzer'] = ['char', 'word']
     param_grid['features__vect__use_idf'] = [True, False]
     param_grid['features__vect__ngram_range'] = [(1, k) for k in range(1, 5)]
-    gs = grid_search.GridSearchCV(clf, param_grid = param_grid, scoring = roc_auc_scorer, verbose = True, n_jobs = -1)
+    #gs = grid_search.GridSearchCV(clf, param_grid = param_grid, scoring = roc_auc_scorer, verbose = True, n_jobs = -1)
     
-    gs.fit(X_train, np.ravel(y_train))
+    #gs.fit(X_train, np.ravel(y_train))
+    clf.fit(X_train, np.ravel(y_train))
     
     clf_best = gs.best_estimator_
     print gs.best_params_
@@ -206,24 +211,26 @@ class FeatureExtractor(BaseEstimator):
         return self
 
     def transform(self, comments):
-
-        sent_list = [c.split() for c in comments]
+        
+        # A list whose elements are lists consisting of words found in each comment
+        comments_word_list = [c.split() for c in comments]
+        print comments_word_list
         #number of bad words
-        badword_num = [sum([word in FeatureExtractor.badwords for word in sent])
-                        for sent in sent_list]
+        comments_badword_num = [sum([word in FeatureExtractor.badwords for word in word_list])
+                        for word_list in comments_word_list]
 
-        word_num = [len(sent) for sent in sent_list]
+        comments_word_num = [len(word_list) for word_list in comments_word_list]
 
-        badword_ratio = np.array(badword_num, dtype = float)/np.array(word_num)
+        comments_badword_ratio = np.array(comments_badword_num, dtype = float)/np.array(comments_word_num)
 
-        char_num = [len(c) for c in comments]
+        comments_char_num = [(len(c) if c != ' ' else 0) for c in comments]
 
-        upper_word_num = [sum([word.isupper() for word in sent])
-                           for sent in sent_list]
-        exclam_num = [sum([w.count('!') for w in sent])
-                       for sent in sent_list]
+        comments_upper_word_num = [sum([word.isupper() for word in word_list])
+                           for word_list in comments_word_num]
+        
+        comments_exclam_num = [sum([w.count('!') for w in word_list]) for word_list in comments_word_list]
 
-        return np.array([word_num, char_num, badword_num, badword_ratio, upper_word_num, exclam_num]).T
+        return np.array([comments_word_num, comments_char_num, comments_badword_num, comments_badword_ratio, comments_upper_word_num, comments_exclam_num]).T
 
 
 if __name__ == '__main__':
